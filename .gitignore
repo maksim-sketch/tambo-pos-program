@@ -1,0 +1,14 @@
+node_modules
+AGENTS.md
+.env
+.env.local
+.env.*
+!.env.example
+dist
+.turbo
+coverage
+playwright-report
+test-results
+apps/api/*.db
+apps/api/*.db-shm
+apps/api/*.db-wal

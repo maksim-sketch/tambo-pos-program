@@ -1,0 +1,23 @@
+{
+  "name": "tambo-pos",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun run --filter api dev & bun run --filter web dev",
+    "dev:api": "bun run --filter api dev",
+    "dev:web": "bun run --filter web dev",
+    "test": "bun test && bun run --filter web test",
+    "db:generate": "bunx drizzle-kit generate",
+    "db:migrate": "bun run --filter api migrate",
+    "db:seed": "bun run --filter api seed",
+    "e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.0",
+    "drizzle-kit": "^0.31.0",
+    "typescript": "^5.9.0"
+  }
+}
