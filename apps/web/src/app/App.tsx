@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useState, useTransition } from "react";
 import { useTamboThreadInput } from "@tambo-ai/react";
+import type { StartSessionResponse } from "../../../../packages/shared/src";
 import { PosTamboProvider } from "../features/ai/tambo-provider";
 import type { RetailBranch } from "../features/ai/retail-branch";
 import { TamboWorkspace } from "../features/ai/TamboWorkspace";
@@ -15,11 +16,19 @@ import {
   disconnectInventorySync,
 } from "../features/inventory/inventory-sync-store";
 import { ReceiptToastViewport } from "../features/notifications/receipt-toast";
+import { apiPost } from "../lib/api";
+import {
+  clearCurrentPosSession,
+  setCurrentPosSession,
+} from "../features/session/pos-session";
 
 const branches = [
   { code: "branch-a", label: "Branch A" },
   { code: "branch-b", label: "Branch B" },
 ] as const satisfies ReadonlyArray<RetailBranch>;
+
+const DEFAULT_TENANT_SLUG =
+  import.meta.env.VITE_TENANT_SLUG ?? "demo-retail";
 
 type AgentMode = "mock" | "live";
 
@@ -44,6 +53,9 @@ export function App({ agentMode }: AppProps) {
   const [mockError, setMockError] = useState<string | null>(null);
   const [isMockSubmitting, setIsMockSubmitting] = useState(false);
   const [isTransitionPending, startTransition] = useTransition();
+  
+  const [isSessionPending, setIsSessionPending] = useState(false);
+  const [sessionError, setSessionError] = useState<string | null>(null);
 
   const activeBranch =
     branches.find((branch) => branch.code === activeBranchCode) ?? branches[0];
@@ -55,6 +67,60 @@ export function App({ agentMode }: AppProps) {
   const liveCart = useLiveBranchCart(activeBranch.code, activeBranch.label);
   const displayCart = resolvedMode === "mock" ? mockCart : liveCart;
   const isMockBusy = isMockSubmitting || isTransitionPending;
+
+  useEffect(() => {
+    if (resolvedMode !== "live") {
+      clearCurrentPosSession();
+      setIsSessionPending(false);
+      setSessionError(null);
+      return;
+    }
+
+    let isDisposed = false;
+
+    async function startPosSession() {
+      setIsSessionPending(true);
+      setSessionError(null);
+      clearCurrentPosSession();
+
+      try {
+        const session = await apiPost<StartSessionResponse>(
+          "/api/session/start-session",
+          {
+            tenantSlug: DEFAULT_TENANT_SLUG,
+            branchCode: activeBranch.code,
+          },
+        );
+
+        if (isDisposed) {
+          return;
+        }
+
+        setCurrentPosSession(session);
+      } catch (error) {
+        if (isDisposed) {
+          return;
+        }
+
+        clearCurrentPosSession();
+        setSessionError(
+          error instanceof Error
+            ? error.message
+            : "Unable to start a live session for this branch.",
+        );
+      } finally {
+        if (!isDisposed) {
+          setIsSessionPending(false);
+        }
+      }
+    }
+
+    void startPosSession();
+
+    return () => {
+      isDisposed = true;
+    };
+  }, [activeBranch.code, resolvedMode]);
 
   useEffect(() => {
     if (resolvedMode !== "live") {
@@ -165,6 +231,16 @@ export function App({ agentMode }: AppProps) {
                     </div>
                   ) : null}
 
+                  {resolvedMode === "live" && isSessionPending ? (
+                    <div className="workspace-note">
+                      Starting a live POS session for {activeBranch.label}...
+                    </div>
+                  ) : null}
+
+                  {resolvedMode === "live" && sessionError ? (
+                    <div className="workspace-error">{sessionError}</div>
+                  ) : null}
+
                   {resolvedMode === "mock" ? (
                     <TamboWorkspace
                       mode="mock"
@@ -178,7 +254,11 @@ export function App({ agentMode }: AppProps) {
                 </div>
 
                 {resolvedMode === "live" ? (
-                  <LiveCommandComposer branchName={activeBranch.label} />
+                  <LiveCommandComposer
+                    branchName={activeBranch.label}
+                    isSessionPending={isSessionPending}
+                    sessionError={sessionError}
+                  />
                 ) : (
                   <MockCommandComposer
                     branchName={activeBranch.label}
@@ -252,12 +332,22 @@ function MockCommandComposer({
   );
 }
 
-function LiveCommandComposer({ branchName }: { branchName: string }) {
+function LiveCommandComposer({
+  branchName,
+  isSessionPending,
+  sessionError,
+}: {
+  branchName: string;
+  isSessionPending: boolean;
+  sessionError: string | null;
+}) {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const { error, isDisabled, isPending, setValue, submit, value } =
     useTamboThreadInput();
   const liveError =
-    submitError ?? (error instanceof Error ? error.message : null);
+    sessionError ??
+    submitError ??
+    (error instanceof Error ? error.message : null);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -295,7 +385,7 @@ function LiveCommandComposer({ branchName }: { branchName: string }) {
           id="command-input"
           aria-label="Command input"
           className="command-input"
-          disabled={isDisabled}
+          disabled={isDisabled || isSessionPending || Boolean(sessionError)}
           onChange={(event) => {
             if (submitError) {
               setSubmitError(null);
@@ -308,10 +398,16 @@ function LiveCommandComposer({ branchName }: { branchName: string }) {
         />
         <button
           className="send-button"
-          disabled={isDisabled || isPending || value.trim().length === 0}
+          disabled={
+            isDisabled ||
+            isPending ||
+            isSessionPending ||
+            Boolean(sessionError) ||
+            value.trim().length === 0
+          }
           type="submit"
         >
-          {isPending ? "Sending..." : "Send"}
+          {isSessionPending ? "Starting session..." : isPending ? "Sending..." : "Send"}
         </button>
       </div>
 

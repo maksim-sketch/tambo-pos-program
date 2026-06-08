@@ -1,0 +1,1 @@
+export const SessionTokenHeader = "x-pos-session-token";

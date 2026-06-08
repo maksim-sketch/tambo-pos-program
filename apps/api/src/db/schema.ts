@@ -218,6 +218,35 @@ export const inventoryEvents = sqliteTable(
   ],
 );
 
+export const posSessions = sqliteTable(
+  "pos_sessions",
+
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(createId),
+
+    token: text("token").notNull(),
+
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+
+    branchId: text("branch_id")
+      .notNull()
+      .references(() => branches.id, { onDelete: "cascade" }),
+
+    createdAt: text("created_at")
+      .notNull()
+      .$defaultFn(createTimestamp),
+
+    closedAt: text("closed_at")  },
+  (table) => [
+    uniqueIndex("pos_sessions_token_unique").on(table.token),
+    index("pos_sessions_tenant+branch_ids").on(table.tenantId, table.branchId),
+  ],
+)
+
 export const tenantRelations = relations(tenants, ({ many }) => ({
   branches: many(branches),
   products: many(products),
@@ -332,3 +361,15 @@ export const inventoryEventRelations = relations(
     }),
   }),
 );
+
+export const posSessionRelations = relations(posSessions, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [posSessions.tenantId],
+    references: [tenants.id],
+  }),
+  branch: one(branches, {
+    fields: [posSessions.branchId],
+    references: [branches.id],
+  })
+}));
+

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { CheckoutSaleRequestSchema } from "../../../../packages/shared/src";
 import { db, type DbClient } from "../db/client";
 import { publishInventoryEventsForReceipt } from "../events/inventory-events";
+import type { ActiveSessionContext } from "../services/session-service";
 import { CheckoutServiceError, checkoutSale } from "../services/checkout-service";
 
 export function createCheckoutRouter(database: DbClient = db) {
@@ -21,7 +22,34 @@ export function createCheckoutRouter(database: DbClient = db) {
       );
     }
 
-    const parsedPayload = CheckoutSaleRequestSchema.safeParse(payload);
+    const sessionContext = context.get(
+      "sessionContext" as never,
+    ) as ActiveSessionContext | undefined;
+
+    if (!sessionContext) {
+      return context.json(
+        {
+          message: "POS session context is missing.",
+        },
+        500,
+      );
+    }
+
+    const payloadWithSessionContext =
+      payload && typeof payload === "object" && !Array.isArray(payload)
+        ? {
+            ...payload,
+            tenantSlug: sessionContext.tenantSlug,
+            branchCode: sessionContext.branchCode,
+          }
+        : {
+            tenantSlug: sessionContext.tenantSlug,
+            branchCode: sessionContext.branchCode,
+          };
+
+    const parsedPayload = CheckoutSaleRequestSchema.safeParse(
+      payloadWithSessionContext,
+    );
 
     if (!parsedPayload.success) {
       return context.json(
