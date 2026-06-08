@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { db, type DbClient } from "../db/client";
+import type { ActiveSessionContext } from "../services/session-service";
 import {
   PrepareCartRequestSchema,
   PrepareCartServiceError,
@@ -23,7 +24,36 @@ export function createCartRouter(database: DbClient = db) {
       );
     }
 
-    const parsedPayload = PrepareCartRequestSchema.safeParse(payload);
+    const sessionContext = context.get(
+      "sessionContext" as never,
+    ) as ActiveSessionContext | undefined;
+
+    if (!sessionContext) {
+      return context.json(
+        {
+          message: "POS session context is missing.",
+        },
+        500,
+      );
+    }
+
+    const payloadWithSessionContext =
+      payload && typeof payload === "object" && !Array.isArray(payload)
+        ? {
+            ...payload,
+            tenantSlug: sessionContext.tenantSlug,
+            branchCode: sessionContext.branchCode,
+            branchName: sessionContext.branchName,
+          }
+        : {
+            tenantSlug: sessionContext.tenantSlug,
+            branchCode: sessionContext.branchCode,
+            branchName: sessionContext.branchName,
+          };
+
+    const parsedPayload = PrepareCartRequestSchema.safeParse(
+      payloadWithSessionContext,
+    );
 
     if (!parsedPayload.success) {
       return context.json(

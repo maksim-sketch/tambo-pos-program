@@ -9,6 +9,7 @@ import {
   saleItems,
   sales,
   tenants,
+  posSessions
 } from "./schema";
 
 export const demoIds = {
@@ -68,6 +69,7 @@ export function resetDatabase(database: DbClient = db) {
     tx.delete(products).run();
     tx.delete(branches).run();
     tx.delete(tenants).run();
+    tx.delete(posSessions).run();
   });
 }
 
